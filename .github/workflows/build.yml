@@ -1,0 +1,96 @@
+# Собирает Jep под Windows / Linux / macOS и выкладывает в релиз "python-runtime".
+# Amoral Client (PythonRuntime.installPrebuiltJep) скачивает оттуда jep-<версия>-<платформа>.whl и
+# распаковывает в site-packages встроенного Python — игрокам не нужен компилятор C.
+#
+# Запуск: Actions → "Python runtime (Jep)" → Run workflow; также срабатывает при изменении этого файла.
+# Повторять только при смене версии Jep или Python в PythonRuntime.java.
+name: Python runtime (Jep)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: [".github/workflows/build.yml"]
+
+permissions:
+  contents: write
+
+env:
+  JEP_VERSION: "4.2.2"
+  PYTHON_VERSION: "3.10"
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-2022
+            platform: x86_64-pc-windows-msvc
+          - os: ubuntu-22.04
+            platform: x86_64-unknown-linux-gnu
+          - os: ubuntu-22.04-arm
+            platform: aarch64-unknown-linux-gnu
+          - os: macos-14
+            platform: aarch64-apple-darwin
+          - os: macos-13
+            platform: x86_64-apple-darwin
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Build Jep
+        shell: bash
+        run: |
+          python -m pip install --upgrade pip setuptools wheel
+          # --no-build-isolation: setuptools уже стоит, сборка видит JAVA_HOME из setup-java.
+          python -m pip install --no-build-isolation --no-binary jep --target out "jep==${JEP_VERSION}"
+
+      - name: Check native library
+        shell: bash
+        run: |
+          ls -la out/jep
+          if ! ls out/jep | grep -Ei '^(lib)?jep.*\.(dll|so|dylib|jnilib)$'; then
+            echo "Нативная библиотека Jep не найдена" >&2
+            exit 1
+          fi
+
+      - name: Pack
+        shell: bash
+        run: |
+          name="jep-${JEP_VERSION}-${{ matrix.platform }}.whl"
+          cd out
+          python -c "import shutil; shutil.make_archive('../pkg', 'zip', '.')"
+          mv ../pkg.zip "../$name"
+          echo "ASSET=$name" >> "$GITHUB_ENV"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.ASSET }}
+          path: ${{ env.ASSET }}
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: assets
+          merge-multiple: true
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: python-runtime
+          name: Python runtime (Jep ${{ env.JEP_VERSION }})
+          body: |
+            Готовые сборки Jep для встроенного Python клиента (python-build-standalone ${{ env.PYTHON_VERSION }}).
+            Jep распространяется по лицензии zlib/libpng: https://github.com/ninia/jep/blob/master/LICENSE
+          files: assets/*
+          make_latest: false
