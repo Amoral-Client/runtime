@@ -1,6 +1,7 @@
 # Собирает Jep под Windows / Linux / macOS и выкладывает в релиз "python-runtime".
 # Amoral Client (PythonRuntime.installPrebuiltJep) скачивает оттуда jep-<версия>-<платформа>.whl и
 # распаковывает в site-packages встроенного Python — игрокам не нужен компилятор C.
+# macOS Intel не собирается (раннеры GitHub выводятся из эксплуатации): там клиент соберёт Jep через pip.
 #
 # Запуск: Actions → "Python runtime (Jep)" → Run workflow; также срабатывает при изменении этого файла.
 # Повторять только при смене версии Jep или Python в PythonRuntime.java.
@@ -33,15 +34,13 @@ jobs:
             platform: aarch64-unknown-linux-gnu
           - os: macos-14
             platform: aarch64-apple-darwin
-          - os: macos-13
-            platform: x86_64-apple-darwin
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "21"
